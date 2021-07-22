@@ -8,7 +8,7 @@ import (
 
 // Tests to see if the core functionality works
 func TestReplaceIn(t *testing.T) {
-	fi, err := os.OpenFile("./bigAssFile.txt", os.O_RDWR|os.O_APPEND, 0777)
+	fi, err := os.OpenFile("bigAssFile.txt", os.O_RDWR|os.O_APPEND, 0777)
 	if err != nil {
 		t.Errorf("Error opening file to generate test data: %s\n", err.Error())
 		return
@@ -23,7 +23,7 @@ func TestReplaceIn(t *testing.T) {
 		t.Errorf("Error closing test file: %s\n", err.Error())
 		return
 	}
-	fi, err = os.OpenFile("./bigAssFile.txt", os.O_RDWR, 0777)
+	fi, err = os.OpenFile("bigAssFile.txt", os.O_RDWR, 0777)
 	if err != nil {
 		t.Errorf("Error opening file to test ReplaceIn function: %s\n", err.Error())
 		return
@@ -47,7 +47,7 @@ func TestReplaceInWithNilFile(t *testing.T) {
 
 // Cleans up the working dir
 func Cleanup() {
-	if err := os.Remove("./BigAssFile.txt"); err != nil {
+	if err := os.Remove("BigAssFile.txt"); err != nil {
 		log.Fatal(err.Error())
 	}
 }
