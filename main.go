@@ -1,4 +1,4 @@
-package gosed 
+package gosed
 
 import (
 	"fmt"
@@ -117,7 +117,8 @@ func ReplaceIn(f *os.File, original, new []byte) error {
 			default:
 				if _, err = f.WriteAt(in, wi); err != nil {
 					// We don't return/continue here because the parent conditional will already continue to the next iteration after updating the high-scope variables
-					log.Printf("Error writing '%s' at offset '%d': %s\n", string(in), wi, err.Error())
+					// Do nothing because this is a module and we don't need to return this error
+					//log.Printf("Error writing '%s' at offset '%d': %s\n", string(in), wi, err.Error())
 				}
 				wi++
 				newLen++
@@ -125,14 +126,15 @@ func ReplaceIn(f *os.File, original, new []byte) error {
 			}
 		default:
 			if _, err = f.WriteAt(in, wi); err != nil {
-				log.Printf("Error writing '%s' at offset '%d': %s\n", string(in), wi, err.Error())
+				// Do nothing because this is a module and we don't need to return this error 
+				//log.Printf("Error writing '%s' at offset '%d': %s\n", string(in), wi, err.Error())
 			}
 			wi++
 			newLen++
 		}
 	}
 	if err = f.Truncate(int64(newLen)); err != nil {
-		log.Printf("Error truncating file: %s\n", err.Error())
+		//log.Printf("Error truncating file: %s\n", err.Error())
 		return err
 	}
 	return nil
