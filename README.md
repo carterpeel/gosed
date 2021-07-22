@@ -6,7 +6,7 @@
 package main
 
 import (
-  gosed "github.com/carterpeel/gosed"
+  "github.com/carterpeel/gosed"
   "log"
 )
 
