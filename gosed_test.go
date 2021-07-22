@@ -47,7 +47,7 @@ func TestReplaceInWithNilFile(t *testing.T) {
 
 // Cleans up the working dir
 func Cleanup() {
-	if err := os.Remove("BigAssFile.txt"); err != nil {
+	if err := os.Remove("bigAssFile.txt"); err != nil {
 		log.Fatal(err.Error())
 	}
 }
