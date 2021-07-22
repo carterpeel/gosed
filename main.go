@@ -5,9 +5,18 @@ import (
 	"golang.org/x/sys/unix"
 	"io"
 	"os"
+	"sync"
+)
+
+var (
+	wg = &sync.WaitGroup{}
 )
 
 func ReplaceIn(f *os.File, original, new []byte) error {
+	defer wg.Done()
+	wg.Wait()
+	wg.Add(1)
+
 	switch {
 	case len(original) == 0:
 		return fmt.Errorf("empty search parameter disallowed")
