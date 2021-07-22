@@ -1,4 +1,4 @@
-package gosed
+package main
 
 import (
 	"fmt"
@@ -126,7 +126,7 @@ func ReplaceIn(f *os.File, original, new []byte) error {
 			}
 		default:
 			if _, err = f.WriteAt(in, wi); err != nil {
-				// Do nothing because this is a module and we don't need to return this error 
+				// Do nothing because this is a module and we don't need to return this error
 				//log.Printf("Error writing '%s' at offset '%d': %s\n", string(in), wi, err.Error())
 			}
 			wi++
