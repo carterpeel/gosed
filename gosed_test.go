@@ -8,7 +8,7 @@ import (
 
 // Tests to see if the core functionality works
 func TestReplaceIn(t *testing.T) {
-	fi, err := os.OpenFile("bigAssFile.txt", os.O_RDWR|os.O_APPEND, 0777)
+	fi, err := os.OpenFile("bigAssFile.txt", os.O_RDWR|os.O_APPEND|os.O_CREATE, 0777)
 	if err != nil {
 		t.Errorf("Error opening file to generate test data: %s\n", err.Error())
 		return
