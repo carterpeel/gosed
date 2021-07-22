@@ -18,7 +18,7 @@ func main() {
   }
   defer fi.Close()
   
-  err = gosed.ReplaceIn(fi, []byte("oldString"), []byte("newString")
+  err = gosed.ReplaceIn(fi, []byte("oldString"), []byte("newString"))
   if err != nil {
     panic(err.Error())
   } 
