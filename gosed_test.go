@@ -43,7 +43,7 @@ func TestSmall(t *testing.T) {
 	if err != nil {
 		t.Fatal(err.Error())
 	}
-	if err := replacer.NewMapping(wordlist[0], "REPLACED"); err != nil {
+	if err := replacer.NewStringMapping(wordlist[0], "REPLACED"); err != nil {
 		t.Fatal(err.Error())
 	}
 	start := time.Now()
@@ -110,7 +110,7 @@ func TestFull(t *testing.T) {
 		t.Fatal(err.Error())
 	}
 	for i, v := range wordlist {
-		if err := replacer.NewMapping(v, fmt.Sprintf("REPLACED-%d", i)); err != nil {
+		if err := replacer.NewStringMapping(v, fmt.Sprintf("REPLACED-%d", i)); err != nil {
 			t.Fatal(err.Error())
 		}
 	}
@@ -122,7 +122,7 @@ func TestFull(t *testing.T) {
 	log.Printf("[gosed] --> replaced %d occurrences in %s\n", replaced, time.Since(start))
 	start = time.Now()
 	for i, v := range wordlist {
-		cmd := exec.Command("/usr/bin/sed", "-i", fmt.Sprintf("'s/%s/REPLACED-%d/g'", v, i), "test-sed.txt")
+		cmd := exec.Command("/usr/local/bin/gsed", "-i", fmt.Sprintf("'s/%s/REPLACED-%d/g'", v, i), "test-sed.txt")
 		if err := ioutil.WriteFile("./gsed.sh", []byte(fmt.Sprintf("#!/bin/bash\n")+strings.Join(cmd.Args, " ")), 0777); err != nil {
 			t.Fatal(err.Error())
 		}

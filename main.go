@@ -2,6 +2,8 @@ package gosed
 
 import (
 	"bufio"
+	"io"
+
 	//"bytes"
 	"fmt"
 	"github.com/jf-tech/go-corelib/ios"
@@ -27,9 +29,10 @@ type replacerConfig struct {
 	Semaphore    *replacerSemaphore
 }
 
+// replacerStringMappings maps old byte sequences to new byte sequences
 type replacerMappings struct {
-	Keys    []string
-	Indices []string
+	Keys    [][]byte
+	Indices [][]byte
 }
 
 // replacerSemaphore contains all of the channels and waitgroups needed for async
@@ -59,8 +62,8 @@ func NewReplacer(fileName string) (*Replacer, error) {
 			FilePath: fileName,
 			FileSize: fiStat.Size(),
 			Mappings: &replacerMappings{
-				Keys:    make([]string, 0),
-				Indices: make([]string, 0),
+				Keys:    make([][]byte, 0),
+				Indices: make([][]byte, 0),
 			},
 			Asynchronous: false,
 			Semaphore: &replacerSemaphore{
@@ -71,16 +74,25 @@ func NewReplacer(fileName string) (*Replacer, error) {
 	}, nil
 }
 
-// NewMapping maps a new oldString:newString entry
-func (rp *Replacer) NewMapping(oldString, newString string) error {
+// NewMapping maps a new oldString:newString []byte entry
+func (rp *Replacer) NewMapping(oldString, newString []byte) error {
 	switch {
-	case oldString == "":
-		return fmt.Errorf("cannot replace empty string with new value")
-	case newString == "":
+	case len(oldString) == 0:
 		return fmt.Errorf("cannot replace empty string with new value")
 	}
 	rp.Config.Mappings.Keys = append(rp.Config.Mappings.Keys, oldString)
 	rp.Config.Mappings.Indices = append(rp.Config.Mappings.Indices, newString)
+	return nil
+}
+
+// NewStringMapping maps a new oldString:newString string entry
+func (rp *Replacer) NewStringMapping(oldString, newString string) error {
+	switch {
+	case oldString == "":
+		return fmt.Errorf("cannot replace empty string with new value")
+	}
+	rp.Config.Mappings.Keys = append(rp.Config.Mappings.Keys, []byte(oldString))
+	rp.Config.Mappings.Indices = append(rp.Config.Mappings.Indices, []byte(newString))
 	return nil
 }
 
@@ -130,14 +142,14 @@ func DoReplace(rp *Replacer) (int, error) {
 			log.Printf("Error closing output: %s\n", err.Error())
 		}
 	}(input, output, tmpfile)
-	var replacer = bufio.NewReaderSize(ios.NewBytesReplacingReader(input, []byte(rp.Config.Mappings.Keys[0]), []byte(rp.Config.Mappings.Indices[0])), 8192)
+	var replacer = ios.NewBytesReplacingReader(bufio.NewReader(input), rp.Config.Mappings.Keys[0], rp.Config.Mappings.Indices[0])
 	for index, key := range rp.Config.Mappings.Keys {
 		if index == 0 {
 			continue
 		}
-		replacer = bufio.NewReader(ios.NewBytesReplacingReader(replacer, []byte(key), []byte(rp.Config.Mappings.Indices[index])))
+		replacer = ios.NewBytesReplacingReader(replacer, key, rp.Config.Mappings.Indices[index])
 	}
-	wrote, err := replacer.WriteTo(bufio.NewWriterSize(output, 8192))
+	wrote, err := io.CopyBuffer(output, replacer, make([]byte, 8192))
 	if err != nil {
 		log.Printf("Error copying: %s\n", err.Error())
 		return 0, err
