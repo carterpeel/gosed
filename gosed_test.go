@@ -62,9 +62,9 @@ func TestFull(t *testing.T) {
 	if err != nil {
 		t.Fatal(err.Error())
 	}
-	babbler.Count = 125
+	babbler.Count = 145
 	babbler.Separator = "-"
-	for i := 0; i < 125; i++ {
+	for i := 0; i < 1024; i++ {
 		wordlist = append(wordlist, babbler.Babble())
 	}
 	rand.Seed(time.Now().UnixNano())
@@ -120,23 +120,26 @@ func TestFull(t *testing.T) {
 		t.Fatal(err.Error())
 	}
 	log.Printf("[gosed] --> replaced %d occurrences in %s\n", replaced, time.Since(start))
-	start = time.Now()
+	var args = fmt.Sprintf("#!/bin/bash\n/usr/bin/sed -i '")
 	for i, v := range wordlist {
-		cmd := exec.Command("/usr/bin/sed", "-i", fmt.Sprintf("'s/%s/REPLACED-%d/g'", v, i), "test-sed.txt")
-		if err := ioutil.WriteFile("./gsed.sh", []byte(fmt.Sprintf("#!/bin/bash\n")+strings.Join(cmd.Args, " ")), 0777); err != nil {
-			t.Fatal(err.Error())
-		}
-		cmd = exec.Command("./gsed.sh")
-		out, err := cmd.CombinedOutput()
-		if err != nil {
-			log.Printf("Error running command: %s\n", err.Error())
-			log.Println(string(out))
-			log.Println(strings.Join(cmd.Args, " "))
-			t.Fatal(err.Error())
+		if i != len(wordlist)-1 {
+			args = fmt.Sprintf("%ss/%s/REPLACED-%d/g; ", args, v, i)
+		} else if i == len(wordlist)-1 {
+			args = fmt.Sprintf("%ss/%s/REPLACED-%d/g;' test-sed.txt", args, v, i)
 		}
 	}
+	if err := ioutil.WriteFile("./gsed.sh", []byte(args), 0777); err != nil {
+		t.Fatal(err.Error())
+	}
+	start = time.Now()
+	cmd := exec.Command("./gsed.sh")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		log.Println(string(out))
+		log.Println(strings.Join(cmd.Args, " "))
+		t.Fatal(err.Error())
+	}
 	log.Printf("[gnused] --> replaced all occurrences in %s\n", time.Since(start))
-
 	log.Println("Comparing files...")
 	hasher1 := sha256.New()
 	hasher2 := sha256.New()
