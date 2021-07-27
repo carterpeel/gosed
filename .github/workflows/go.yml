@@ -12,12 +12,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
-
+    
     - name: Set Up Go
       uses: actions/setup-go@v2
       with:
         go-version: 1.16
         
+    - name: create wordlist dir
+      run: mkdir -p /usr/share/dict/
+      
+    - name: Get wordlist
+      run: curl https://gist.githubusercontent.com/carterpeel/c410e7f09269f46b03833c9b4c3c5f97/raw/a4fb11fb5b616cff57da08631731c129f96389c4/gistfile1.txt > /usr/share/dict/words 
+      
     - name: Init go.mod
       run: go mod init gosed 
       
