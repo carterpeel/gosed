@@ -120,7 +120,7 @@ func TestFull(t *testing.T) {
 		t.Fatal(err.Error())
 	}
 	log.Printf("[gosed] --> replaced %d occurrences in %s\n", replaced, time.Since(start))
-	var args = fmt.Sprintf("#!/bin/bash\n/usr/local/bin/gsed -i '")
+	var args = fmt.Sprintf("#!/bin/bash\n/usr/bin/sed -i '")
 	for i, v := range wordlist {
 		if i != len(wordlist)-1 {
 			args = fmt.Sprintf("%ss/%s/REPLACED-%d/g; ", args, v, i)
