@@ -1,3 +1,6 @@
+// Copyright GoSed (c) 2021, Carter Peel 
+// This code is licensed under MIT license (see LICENSE for details)
+
 package gosed
 
 import (
