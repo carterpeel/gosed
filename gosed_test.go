@@ -122,7 +122,7 @@ func TestFull(t *testing.T) {
 	log.Printf("[gosed] --> replaced %d occurrences in %s\n", replaced, time.Since(start))
 	start = time.Now()
 	for i, v := range wordlist {
-		cmd := exec.Command("/usr/local/bin/gsed", "-i", fmt.Sprintf("'s/%s/REPLACED-%d/g'", v, i), "test-sed.txt")
+		cmd := exec.Command("/usr/bin/sed", "-i", fmt.Sprintf("'s/%s/REPLACED-%d/g'", v, i), "test-sed.txt")
 		if err := ioutil.WriteFile("./gsed.sh", []byte(fmt.Sprintf("#!/bin/bash\n")+strings.Join(cmd.Args, " ")), 0777); err != nil {
 			t.Fatal(err.Error())
 		}
