@@ -1,150 +1,171 @@
 package gosed
 
 import (
+	"bufio"
+	//"bytes"
 	"fmt"
-	"golang.org/x/sys/unix"
+	"github.com/jf-tech/go-corelib/ios"
+	"github.com/zenthangplus/goccm"
 	"io"
+	"log"
 	"os"
 	"sync"
+	"time"
 )
 
-var (
-	wg = &sync.WaitGroup{}
-)
+// Replacer contains all of the methods needed to properly execute replace operations
+type Replacer struct {
+	Config *replacerConfig
+}
 
-func ReplaceIn(f *os.File, original, new []byte) error {
-	defer wg.Done()
-	wg.Wait()
-	wg.Add(1)
+// replacerConfig contains all of the config variables
+type replacerConfig struct {
+	File         *os.File
+	FilePath     string
+	FileSize     int64
+	Asynchronous bool
+	Mappings     *replacerMappings
+	Semaphore    *replacerSemaphore
+}
 
-	switch {
-	case len(original) == 0:
-		return fmt.Errorf("empty search parameter disallowed")
-	case f == nil:
-		return fmt.Errorf("cannot use nil value as argument for file")
+type replacerMappings struct {
+	Keys    []string
+	Indices []string
+}
+
+// replacerSemaphore contains all of the channels and waitgroups needed for async
+type replacerSemaphore struct {
+	Waiter    sync.WaitGroup
+	Operating chan struct{}
+	Done      chan bool
+	GCM       goccm.ConcurrencyManager
+	JobWaiter chan bool
+	Used      bool
+	Queue     int
+}
+
+// NewReplacer returns a new *Replacer struct
+func NewReplacer(fileName string) (*Replacer, error) {
+	fi, err := os.OpenFile(fileName, os.O_RDWR, 0644)
+	if err != nil {
+		return nil, err
 	}
-	fStat, err := f.Stat()
+	fiStat, err := fi.Stat()
+	if err != nil {
+		return nil, err
+	}
+	return &Replacer{
+		Config: &replacerConfig{
+			File:     fi,
+			FilePath: fileName,
+			FileSize: fiStat.Size(),
+			Mappings: &replacerMappings{
+				Keys:    make([]string, 0),
+				Indices: make([]string, 0),
+			},
+			Asynchronous: false,
+			Semaphore: &replacerSemaphore{
+				GCM:    goccm.New(1),
+				Waiter: sync.WaitGroup{},
+			},
+		},
+	}, nil
+}
+
+// NewMapping maps a new oldString:newString entry
+func (rp *Replacer) NewMapping(oldString, newString string) error {
+	switch {
+	case oldString == "":
+		return fmt.Errorf("cannot replace empty string with new value")
+	case newString == "":
+		return fmt.Errorf("cannot replace empty string with new value")
+	}
+	rp.Config.Mappings.Keys = append(rp.Config.Mappings.Keys, oldString)
+	rp.Config.Mappings.Indices = append(rp.Config.Mappings.Indices, newString)
+	return nil
+}
+
+// Replace does the replace operation on the file
+func (rp *Replacer) Replace() (int, error) {
+	var count int
+	n, err := DoReplace(rp)
+	if err != nil {
+		return n, err
+	}
+	count += n
+	return count, nil
+}
+
+func (rp *Replacer) Reset() error {
+	var err error
+	if err := rp.Config.File.Close(); err != nil {
+		return err
+	}
+	rp.Config.File, err = os.OpenFile(rp.Config.FilePath, os.O_RDWR, 0644)
 	if err != nil {
 		return err
 	}
-	switch {
-	case fStat.IsDir():
-		return fmt.Errorf("cannot replace strings in a directory")
-	case f.Fd() == unix.O_RDONLY:
-		return fmt.Errorf("cannot replace strings in read only file")
-	case f.Fd() == unix.O_TRUNC:
-		return fmt.Errorf("cannot safely perform operation with os.O_TRUNC descriptor")
-	case f.Fd() == unix.O_RDWR:
-		break
-	}
-
-	in := make([]byte, 1)
-	readBuffer := make([]byte, 0) // when new > original, we have to read the bytes we will override
-	matchIndex := 0
-	newLen := 0
-	readDone := false
-	// If file is not at eof, read from file. else, read from our buffer if it's not empty
-	DoRead := func(b []byte, index int64, appendReadBuffer bool) (int, error) {
-		switch {
-		case readDone:
-			switch {
-			case appendReadBuffer:
-				return 0, nil
-			case len(readBuffer) == 0:
-				return 0, io.EOF
-			}
-			n := 0
-			for ; n < len(b) && n < len(readBuffer); n++ {
-				b[n] = readBuffer[n]
-			}
-			readBuffer = readBuffer[n:]
-			//fmt.Println("DoRead:", len(b), n, string(b[:n]), string(readBuffer))
-			return n, nil
-		default:
-			n, err := f.ReadAt(b, index)
-			switch {
-			case err != nil:
-				readDone = true
-			case appendReadBuffer:
-				return n, nil
-			}
-			readBuffer = append(readBuffer, b[:n]...)
-			switch {
-			case n < len(b):
-				switch {
-				case len(b) > len(readBuffer):
-					n = len(readBuffer)
-				default:
-					n = len(b)
-				}
-			}
-			for i, v := range readBuffer[:n] {
-				b[i] = v
-			}
-			readBuffer = readBuffer[n:]
-			//fmt.Println("DoRead:", len(b), n, string(b[:n]), string(readBuffer))
-			switch {
-			case n != 0:
-				return n, nil
-			default:
-				return n, err
-			}
-		}
-	}
-	var ri, wi int64
-	for {
-		if _, err := DoRead(in, ri, false); err != nil {
-			break
-		}
-		//fmt.Printf("in:%v ri:%v wi:%v matchIndex:%v readBuffer:%v newLen:%v\n", string(in), ri, wi, matchIndex, string(readBuffer), newLen)
-		ri++
-		switch {
-		case in[0] == original[matchIndex]:
-			matchIndex++
-			switch {
-			case matchIndex == len(original):
-				switch {
-				case len(new) > len(original):
-					in := make([]byte, len(new)-len(original))
-					n, _ := DoRead(in, ri, true) // only to manage buffer
-					ri += int64(n)
-					readBuffer = append(readBuffer, in[:n]...)
-				}
-				_, _ = f.WriteAt(new, wi)
-				matchIndex = 0
-				newLen += len(new)
-				wi += int64(len(new))
-			}
-		case matchIndex != 0:
-			//fmt.Println("partial match reset")
-			n, _ := f.WriteAt(original[:matchIndex], wi)
-			wi += int64(n)
-			newLen += n
-			switch {
-			case in[0] == original[0]:
-				matchIndex = 1
-			default:
-				if _, err = f.WriteAt(in, wi); err != nil {
-					// We don't return/continue here because the parent conditional will already continue to the next iteration after updating the high-scope variables
-					// Do nothing because this is a module and we don't need to return this error
-					//log.Printf("Error writing '%s' at offset '%d': %s\n", string(in), wi, err.Error())
-				}
-				wi++
-				newLen++
-				matchIndex = 0
-			}
-		default:
-			if _, err = f.WriteAt(in, wi); err != nil {
-				// Do nothing because this is a module and we don't need to return this error
-				//log.Printf("Error writing '%s' at offset '%d': %s\n", string(in), wi, err.Error())
-			}
-			wi++
-			newLen++
-		}
-	}
-	if err = f.Truncate(int64(newLen)); err != nil {
-		//log.Printf("Error truncating file: %s\n", err.Error())
-		return err
-	}
+	rp.Config.Mappings.Keys = rp.Config.Mappings.Keys[:0]
+	rp.Config.Mappings.Indices = rp.Config.Mappings.Indices[:0]
 	return nil
+}
+
+// DoReplace does the replace operation
+func DoReplace(rp *Replacer) (int, error) {
+	tmpfile := fmt.Sprintf("tmp-gosed-%d", time.Now().UnixNano())
+	input, err := os.OpenFile(rp.Config.FilePath, os.O_RDWR, 0644)
+	if err != nil {
+		log.Printf("Error opening file: %s\n", err.Error())
+		return 0, err
+	}
+	output, err := os.OpenFile(tmpfile, os.O_RDWR|os.O_CREATE, 0777)
+	if err != nil {
+		log.Printf("Error opening file: %s\n", err.Error())
+		return 0, err
+	}
+	defer func(input, output *os.File, tmpFile string) {
+		if err := input.Close(); err != nil {
+			log.Printf("Error closing input: %s\n", err.Error())
+		}
+		if err := output.Close(); err != nil {
+			log.Printf("Error closing output: %s\n", err.Error())
+		}
+		go func() {
+			if err := os.Remove(tmpfile); err != nil {
+				log.Printf("Error removing tmpfile: %s\n", err.Error())
+			}
+		}()
+	}(input, output, tmpfile)
+	var replacer = bufio.NewReaderSize(ios.NewBytesReplacingReader(input, []byte(rp.Config.Mappings.Keys[0]), []byte(rp.Config.Mappings.Indices[0])), 8192)
+	for index, key := range rp.Config.Mappings.Keys {
+		if index == 0 {
+			continue
+		}
+		replacer = bufio.NewReader(ios.NewBytesReplacingReader(replacer, []byte(key), []byte(rp.Config.Mappings.Indices[index])))
+	}
+	wrote, err := replacer.WriteTo(bufio.NewWriterSize(output, 8192))
+	if err != nil {
+		log.Printf("Error copying: %s\n", err.Error())
+		return 0, err
+	}
+	if err := input.Truncate(0); err != nil {
+		log.Printf("Error truncating file: %s\n", err.Error())
+		return 0, err
+	}
+	input, err = os.OpenFile(rp.Config.FilePath, os.O_RDWR, 0644)
+	if err != nil {
+		log.Printf("Error opening file: %s\n", err.Error())
+		return 0, err
+	}
+	output, err = os.OpenFile(tmpfile, os.O_RDWR, 0777)
+	if err != nil {
+		log.Printf("Error opening file: %s\n", err.Error())
+		return 0, err
+	}
+	wrote, err = io.Copy(input, output)
+	if err != nil {
+		log.Printf("Error copying tmpfile to new file: %s\n", err.Error())
+		return 0, err
+	}
+	return int(wrote), nil
 }

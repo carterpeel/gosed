@@ -12,16 +12,16 @@ import (
 )
 
 func main() {
-  // Must have os.O_RDWR file descriptor for proper functionality
-  fi, err := os.OpenFile("./someBigAssFile.txt", os.O_RDWR, 0644)
+  replacer, err := gosed.NewReplacer("hugeAssFile.txt");
   if err != nil {
-    log.Fatalf(err.Error())
+      log.Fatal(err.Error())
   }
-  defer fi.Close()
+  if err := replacer.NewMapping("oldString", "newString"); err != nil {
+      log.Fatal(err.Error())
+  }
+  if _, err := replacer.Replace(); err != nil {
+      log.Fatal(err.Error())
+  }
   
-  err = gosed.ReplaceIn(fi, []byte("oldString"), []byte("newString"))
-  if err != nil {
-    panic(err.Error())
-  } 
 }
 ```
