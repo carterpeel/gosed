@@ -64,7 +64,7 @@ func TestFull(t *testing.T) {
 	}
 	babbler.Count = 145
 	babbler.Separator = "-"
-	for i := 0; i < 1024; i++ {
+	for i := 0; i < 256; i++ {
 		wordlist = append(wordlist, babbler.Babble())
 	}
 	rand.Seed(time.Now().UnixNano())
