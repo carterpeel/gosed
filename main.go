@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"github.com/jf-tech/go-corelib/ios"
 	"github.com/zenthangplus/goccm"
-	"io"
 	"log"
 	"os"
 	"sync"
@@ -118,7 +117,7 @@ func DoReplace(rp *Replacer) (int, error) {
 		log.Printf("Error opening file: %s\n", err.Error())
 		return 0, err
 	}
-	output, err := os.OpenFile(tmpfile, os.O_RDWR|os.O_CREATE, 0777)
+	output, err := os.OpenFile(tmpfile, os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
 		log.Printf("Error opening file: %s\n", err.Error())
 		return 0, err
@@ -130,11 +129,6 @@ func DoReplace(rp *Replacer) (int, error) {
 		if err := output.Close(); err != nil {
 			log.Printf("Error closing output: %s\n", err.Error())
 		}
-		go func() {
-			if err := os.Remove(tmpfile); err != nil {
-				log.Printf("Error removing tmpfile: %s\n", err.Error())
-			}
-		}()
 	}(input, output, tmpfile)
 	var replacer = bufio.NewReaderSize(ios.NewBytesReplacingReader(input, []byte(rp.Config.Mappings.Keys[0]), []byte(rp.Config.Mappings.Indices[0])), 8192)
 	for index, key := range rp.Config.Mappings.Keys {
@@ -148,23 +142,10 @@ func DoReplace(rp *Replacer) (int, error) {
 		log.Printf("Error copying: %s\n", err.Error())
 		return 0, err
 	}
-	if err := input.Truncate(0); err != nil {
-		log.Printf("Error truncating file: %s\n", err.Error())
+	if err := os.Remove(rp.Config.FilePath); err != nil {
 		return 0, err
 	}
-	input, err = os.OpenFile(rp.Config.FilePath, os.O_RDWR, 0644)
-	if err != nil {
-		log.Printf("Error opening file: %s\n", err.Error())
-		return 0, err
-	}
-	output, err = os.OpenFile(tmpfile, os.O_RDWR, 0777)
-	if err != nil {
-		log.Printf("Error opening file: %s\n", err.Error())
-		return 0, err
-	}
-	wrote, err = io.Copy(input, output)
-	if err != nil {
-		log.Printf("Error copying tmpfile to new file: %s\n", err.Error())
+	if err := os.Rename(tmpfile, rp.Config.FilePath); err != nil {
 		return 0, err
 	}
 	return int(wrote), nil

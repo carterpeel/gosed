@@ -64,7 +64,7 @@ func TestFull(t *testing.T) {
 	}
 	babbler.Count = 125
 	babbler.Separator = "-"
-	for i := 0; i < 1024; i++ {
+	for i := 0; i < 125; i++ {
 		wordlist = append(wordlist, babbler.Babble())
 	}
 	rand.Seed(time.Now().UnixNano())
@@ -79,7 +79,7 @@ func TestFull(t *testing.T) {
 	}
 	err = fi.Sync()
 	if err != nil {
-		log.Printf("Error syncing file: %s\n", err.Error())
+		t.Fatal(err.Error())
 	}
 	if err = fi.Close(); err != nil {
 		t.Fatal(err.Error())
