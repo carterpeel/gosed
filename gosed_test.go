@@ -160,7 +160,7 @@ func TestFull(t *testing.T) {
 		t.Fatal(err.Error())
 	}
 	log.Printf("[gosed] --> replaced %d occurrences in %s\n", replaced, time.Since(start))
-	var args = fmt.Sprintf("#!/bin/bash\n/usr/local/bin/gsed -i '")
+	var args = fmt.Sprintf("#!/bin/bash\nsed -i '")
 	for i, v := range wordlist {
 		if i != len(wordlist)-1 {
 			args = fmt.Sprintf("%ss/%s/REPLACED-%d/g; ", args, v, i)
@@ -275,7 +275,7 @@ func TestFullSequential(t *testing.T) {
 	log.Printf("[gosed] --> replaced %d occurrences in %s\n", replaced, time.Since(start))
 	start = time.Now()
 	for i, v := range wordlist {
-		out, err := exec.Command("/usr/local/bin/gsed", "-i", fmt.Sprintf("s/%s/REPLACED-%d/g", v, i), "test-sed-seq.txt").CombinedOutput()
+		out, err := exec.Command("sed", "-i", fmt.Sprintf("s/%s/REPLACED-%d/g", v, i), "test-sed-seq.txt").CombinedOutput()
 		if err != nil {
 			log.Println(string(out))
 			t.Fatal(err.Error())
