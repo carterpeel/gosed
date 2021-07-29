@@ -5,15 +5,12 @@ package gosed
 
 import (
 	"bufio"
-	"io"
-
-	//"bytes"
+	"bytes"
 	"fmt"
 	"github.com/jf-tech/go-corelib/ios"
 	"github.com/zenthangplus/goccm"
-	"log"
+	"io"
 	"os"
-	"sync"
 	"time"
 )
 
@@ -27,6 +24,7 @@ type replacerConfig struct {
 	File         *os.File
 	FilePath     string
 	FileSize     int64
+	FilePerm     os.FileMode
 	Asynchronous bool
 	Mappings     *replacerMappings
 	Semaphore    *replacerSemaphore
@@ -40,38 +38,38 @@ type replacerMappings struct {
 
 // replacerSemaphore contains all of the channels and waitgroups needed for async
 type replacerSemaphore struct {
-	Waiter    sync.WaitGroup
-	Operating chan struct{}
-	Done      chan bool
-	GCM       goccm.ConcurrencyManager
-	JobWaiter chan bool
-	Used      bool
-	Queue     int
+	GCM goccm.ConcurrencyManager
 }
 
-// NewReplacer returns a new *Replacer struct
+// NewReplacer returns a new *Replacer type
 func NewReplacer(fileName string) (*Replacer, error) {
-	fi, err := os.OpenFile(fileName, os.O_RDWR, 0644)
-	if err != nil {
+	fd, err := os.Stat(fileName)
+	switch err {
+	case nil:
+		break
+	default:
 		return nil, err
 	}
-	fiStat, err := fi.Stat()
-	if err != nil {
+	fi, err := os.OpenFile(fileName, os.O_RDWR, fd.Mode().Perm())
+	switch err {
+	case nil:
+		break
+	default:
 		return nil, err
 	}
 	return &Replacer{
 		Config: &replacerConfig{
 			File:     fi,
 			FilePath: fileName,
-			FileSize: fiStat.Size(),
+			FileSize: fd.Size(),
+			FilePerm: fd.Mode().Perm(),
 			Mappings: &replacerMappings{
 				Keys:    make([][]byte, 0),
 				Indices: make([][]byte, 0),
 			},
 			Asynchronous: false,
 			Semaphore: &replacerSemaphore{
-				GCM:    goccm.New(1),
-				Waiter: sync.WaitGroup{},
+				GCM: goccm.New(1),
 			},
 		},
 	}, nil
@@ -79,8 +77,8 @@ func NewReplacer(fileName string) (*Replacer, error) {
 
 // NewMapping maps a new oldString:newString []byte entry
 func (rp *Replacer) NewMapping(oldString, newString []byte) error {
-	switch {
-	case len(oldString) == 0:
+	switch len(oldString) {
+	case 0:
 		return fmt.Errorf("cannot replace empty string with new value")
 	}
 	rp.Config.Mappings.Keys = append(rp.Config.Mappings.Keys, oldString)
@@ -90,8 +88,8 @@ func (rp *Replacer) NewMapping(oldString, newString []byte) error {
 
 // NewStringMapping maps a new oldString:newString string entry
 func (rp *Replacer) NewStringMapping(oldString, newString string) error {
-	switch {
-	case oldString == "":
+	switch oldString {
+	case "":
 		return fmt.Errorf("cannot replace empty string with new value")
 	}
 	rp.Config.Mappings.Keys = append(rp.Config.Mappings.Keys, []byte(oldString))
@@ -99,69 +97,165 @@ func (rp *Replacer) NewStringMapping(oldString, newString string) error {
 	return nil
 }
 
-// Replace does the replace operation on the file
-func (rp *Replacer) Replace() (int, error) {
-	var count int
-	n, err := DoReplace(rp)
-	if err != nil {
-		return n, err
-	}
-	count += n
-	return count, nil
-}
-
 func (rp *Replacer) Reset() error {
 	var err error
-	if err := rp.Config.File.Close(); err != nil {
+	switch err := rp.Config.File.Close(); err {
+	case nil:
+		break
+	default:
 		return err
 	}
-	rp.Config.File, err = os.OpenFile(rp.Config.FilePath, os.O_RDWR, 0644)
-	if err != nil {
+	fd, err := os.Stat(rp.Config.FilePath)
+	switch err {
+	case nil:
+		break
+	default:
+		return err
+	}
+	rp.Config.File, err = os.OpenFile(rp.Config.FilePath, os.O_RDWR, fd.Mode().Perm())
+	switch err {
+	case nil:
+		break
+	default:
 		return err
 	}
 	rp.Config.Mappings.Keys = rp.Config.Mappings.Keys[:0]
 	rp.Config.Mappings.Indices = rp.Config.Mappings.Indices[:0]
+	rp.Config.FilePerm = fd.Mode().Perm()
 	return nil
 }
 
-// DoReplace does the replace operation
-func DoReplace(rp *Replacer) (int, error) {
-	tmpfile := fmt.Sprintf("tmp-gosed-%d", time.Now().UnixNano())
-	input, err := os.OpenFile(rp.Config.FilePath, os.O_RDWR, 0644)
-	if err != nil {
-		log.Printf("Error opening file: %s\n", err.Error())
-		return 0, err
-	}
-	output, err := os.OpenFile(tmpfile, os.O_RDWR|os.O_CREATE, 0644)
-	if err != nil {
-		log.Printf("Error opening file: %s\n", err.Error())
-		return 0, err
-	}
-	defer func(input, output *os.File, tmpFile string) {
-		if err := input.Close(); err != nil {
-			log.Printf("Error closing input: %s\n", err.Error())
+// ReplaceChained does the replace operation with a chained reader model
+func (rp *Replacer) ReplaceChained() (int, error) {
+	rp.Config.Semaphore.GCM.Wait()
+	return DoChainReplace(rp)
+}
+
+// Replace does the replace operation with a concurrent (sequential) reader --> tmpfile model
+func (rp *Replacer) Replace() (int, error) {
+	rp.Config.Semaphore.GCM.Wait()
+	return DoSequentialReplace(rp)
+}
+
+// DoSequentialReplace does the replace operation without reader chaining, which is slower but less resource intensive.
+func DoSequentialReplace(rp *Replacer) (int, error) {
+	defer rp.Config.Semaphore.GCM.Done()
+	buf := bytes.NewBuffer(make([]byte, 8192))
+	replacer := ios.BytesReplacingReader{}
+	DoSingleReplace := func(old, new []byte) (int, error) {
+		tmpFile := fmt.Sprintf("tmp-gosed-%d", time.Now().UnixNano())
+		input, err := os.OpenFile(rp.Config.FilePath, os.O_RDWR, rp.Config.FilePerm)
+		switch err {
+		case nil:
+			break
+		default:
+			return 0, err
 		}
-		if err := output.Close(); err != nil {
-			log.Printf("Error closing output: %s\n", err.Error())
+		output, err := os.OpenFile(tmpFile, os.O_RDWR|os.O_CREATE, rp.Config.FilePerm)
+		switch err {
+		case nil:
+			break
+		default:
+			return 0, err
 		}
-	}(input, output, tmpfile)
-	var replacer = ios.NewBytesReplacingReader(bufio.NewReader(input), rp.Config.Mappings.Keys[0], rp.Config.Mappings.Indices[0])
+		defer func(input, output *os.File) {
+			_ = input.Close()
+			_ = input.Close()
+		}(input, output)
+		replacer.Reset(bufio.NewReaderSize(input, 8192), old, new)
+		wrote, err := io.CopyBuffer(output, &replacer, buf.Bytes())
+		switch err {
+		case nil:
+			break
+		default:
+			return 0, err
+		}
+		switch err := os.Remove(rp.Config.FilePath); err {
+		case nil:
+			break
+		default:
+			return 0, err
+		}
+		switch err := os.Rename(tmpFile, rp.Config.FilePath); err {
+		case nil:
+			break
+		default:
+			return 0, err
+		}
+		rp.Config.FileSize = wrote
+		return int(wrote), nil
+	}
+	var count int
 	for index, key := range rp.Config.Mappings.Keys {
-		if index == 0 {
+		wrote, err := DoSingleReplace(key, rp.Config.Mappings.Indices[index])
+		switch err {
+		case nil:
+			break
+		default:
+			return count, err
+		}
+		count += wrote
+		rp.Config.FileSize = int64(wrote)
+	}
+	rp.Config.Mappings.Indices = rp.Config.Mappings.Indices[:0]
+	rp.Config.Mappings.Keys = rp.Config.Mappings.Keys[:0]
+	return count, nil
+}
+
+// DoChainReplace does the replace operation with reader chaining, which is faster but more resource intensive.
+func DoChainReplace(rp *Replacer) (int, error) {
+	tmpfile := fmt.Sprintf("tmp-gosed-%d", time.Now().UnixNano())
+	input, err := os.OpenFile(rp.Config.FilePath, os.O_RDWR, rp.Config.FilePerm)
+	switch err {
+	case nil:
+		break
+	default:
+		return 0, err
+	}
+	output, err := os.OpenFile(tmpfile, os.O_RDWR|os.O_CREATE, rp.Config.FilePerm)
+	switch err {
+	case nil:
+		break
+	default:
+		return 0, err
+	}
+	defer func(input, output *os.File) {
+		_ = input.Close()
+		_ = input.Close()
+		rp.Config.Semaphore.GCM.Done()
+	}(input, output)
+	var replacer = ios.NewBytesReplacingReader(bufio.NewReaderSize(input, 8192), rp.Config.Mappings.Keys[0], rp.Config.Mappings.Indices[0])
+	for index, key := range rp.Config.Mappings.Keys {
+	Switch:
+		switch index {
+		case 0:
 			continue
+		default:
+			break Switch
 		}
 		replacer = ios.NewBytesReplacingReader(replacer, key, rp.Config.Mappings.Indices[index])
 	}
 	wrote, err := io.CopyBuffer(output, replacer, make([]byte, 8192))
-	if err != nil {
-		log.Printf("Error copying: %s\n", err.Error())
+	switch err {
+	case nil:
+		break
+	default:
 		return 0, err
 	}
-	if err := os.Remove(rp.Config.FilePath); err != nil {
+	switch err := os.Remove(rp.Config.FilePath); err {
+	case nil:
+		break
+	default:
 		return 0, err
 	}
-	if err := os.Rename(tmpfile, rp.Config.FilePath); err != nil {
+	switch err := os.Rename(tmpfile, rp.Config.FilePath); err {
+	case nil:
+		break
+	default:
 		return 0, err
 	}
+	rp.Config.FileSize = wrote
+	rp.Config.Mappings.Indices = rp.Config.Mappings.Indices[:0]
+	rp.Config.Mappings.Keys = rp.Config.Mappings.Keys[:0]
 	return int(wrote), nil
 }
