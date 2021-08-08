@@ -76,7 +76,7 @@ func TestSmall(t *testing.T) {
 	}
 	fmt.Printf("[gosed] --> replaced %d bytes in %s\n", replaced, time.Since(start))
 	start = time.Now()
-	out, err := exec.Command("gsed", "-i", fmt.Sprintf("s/%s/REPLACED/g", wordlist[0]), "test-sed.txt").CombinedOutput()
+	out, err := exec.Command("sed", "-i", fmt.Sprintf("s/%s/REPLACED/g", wordlist[0]), "test-sed.txt").CombinedOutput()
 	if err != nil {
 		log.Printf("gnused output: %s\n", string(out))
 		t.Fatal(err.Error())
