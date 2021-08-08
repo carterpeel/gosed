@@ -1,8 +1,10 @@
 package gosed
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"fmt"
+	"github.com/carterpeel/go-corelib/ios"
 	"github.com/docker/go-units"
 	"github.com/tjarratt/babble"
 	"io"
@@ -16,6 +18,21 @@ import (
 	"testing"
 	"time"
 )
+
+func TestTiny(t *testing.T) {
+	start := time.Now()
+	tinyBytes := []byte{'a', 'b', 'c', 'a', 'd'}
+	newBytes, err := ioutil.ReadAll(ios.NewBytesReplacingReader(bytes.NewReader(tinyBytes), []byte("a"), []byte("f")))
+	if err != nil {
+		t.Fatal(err.Error())
+	}
+	fmt.Printf("Old Bytes: %s\nNew Bytes: %s\nTook %s\n", string(tinyBytes), string(newBytes), time.Since(start))
+	if !bytes.Equal(newBytes, []byte{'f', 'b', 'c', 'f', 'd'}) {
+		fmt.Printf("Old Bytes: %s\nNew Bytes: %s\n", string(tinyBytes), string(newBytes))
+		t.Fatal(fmt.Errorf("new bytes did not match"))
+	}
+}
+
 
 func TestSmall(t *testing.T) {
 	defer Cleanup()
@@ -39,8 +56,13 @@ func TestSmall(t *testing.T) {
 	if err = fi.Close(); err != nil {
 		t.Fatal(err.Error())
 	}
-
-	replacer, err := NewReplacer("test.txt")
+	if err := copyFileContents("test.txt", "test-gosed.txt"); err != nil {
+		t.Fatal(err.Error())
+	}
+	if err := copyFileContents("test.txt", "test-sed.txt"); err != nil {
+		t.Fatal(err.Error())
+	}
+	replacer, err := NewReplacer("test-gosed.txt")
 	if err != nil {
 		t.Fatal(err.Error())
 	}
@@ -52,7 +74,38 @@ func TestSmall(t *testing.T) {
 	if err != nil {
 		t.Fatal(err.Error())
 	}
-	log.Printf("replaced %d bytes in %s\n", replaced, time.Since(start))
+	fmt.Printf("[gosed] --> replaced %d bytes in %s\n", replaced, time.Since(start))
+	start = time.Now()
+	out, err := exec.Command("gsed", "-i", fmt.Sprintf("s/%s/REPLACED/g", wordlist[0]), "test-sed.txt").CombinedOutput()
+	if err != nil {
+		log.Printf("gnused output: %s\n", string(out))
+		t.Fatal(err.Error())
+	}
+	fmt.Printf("[gnused] --> replaced all occurences in %s\n", time.Since(start))
+	log.Println("Comparing files...")
+	hasher1 := sha256.New()
+	hasher2 := sha256.New()
+	hashReader1, err := os.Open("test-gosed.txt")
+	if err != nil {
+		log.Printf("Error opening gosed test file: %s\n", err.Error())
+		t.Fatal(err.Error())
+	}
+	hashReader2, err := os.Open("test-sed.txt")
+	if err != nil {
+		log.Printf("Error opening gnused test file: %s\n", err.Error())
+		t.Fatal(err.Error())
+	}
+	if _, err = io.Copy(hasher1, hashReader1); err != nil {
+		t.Fatal(err.Error())
+	}
+	if _, err = io.Copy(hasher2, hashReader2); err != nil {
+		t.Fatal(err.Error())
+	}
+	fmt.Printf("%x:test-gosed.txt\n%x:test-sed.txt\n", hasher1.Sum(nil), hasher2.Sum(nil))
+	if string(hasher1.Sum(nil)) != string(hasher2.Sum(nil)) {
+		fmt.Printf("%x:test-gosed.txt\n%x:test-sed.txt", hasher1.Sum(nil), hasher2.Sum(nil))
+		t.Fatal(fmt.Errorf("file hashes do not match"))
+	}
 }
 
 func TestSequentialSmall(t *testing.T) {
@@ -160,7 +213,7 @@ func TestFull(t *testing.T) {
 		t.Fatal(err.Error())
 	}
 	log.Printf("[gosed] --> replaced %d occurrences in %s\n", replaced, time.Since(start))
-	var args = fmt.Sprintf("#!/bin/bash\nsed -i '")
+	var args = fmt.Sprintf("#!/bin/bash\ngsed -i '")
 	for i, v := range wordlist {
 		if i != len(wordlist)-1 {
 			args = fmt.Sprintf("%ss/%s/REPLACED-%d/g; ", args, v, i)
@@ -275,7 +328,7 @@ func TestFullSequential(t *testing.T) {
 	log.Printf("[gosed] --> replaced %d occurrences in %s\n", replaced, time.Since(start))
 	start = time.Now()
 	for i, v := range wordlist {
-		out, err := exec.Command("sed", "-i", fmt.Sprintf("s/%s/REPLACED-%d/g", v, i), "test-sed-seq.txt").CombinedOutput()
+		out, err := exec.Command("gsed", "-i", fmt.Sprintf("s/%s/REPLACED-%d/g", v, i), "test-sed-seq.txt").CombinedOutput()
 		if err != nil {
 			log.Println(string(out))
 			t.Fatal(err.Error())
@@ -323,4 +376,29 @@ func Cleanup() {
 	for _, fi := range files {
 		_ = os.Remove(fi)
 	}
+}
+
+func copyFileContents(src, dst string) (err error) {
+	in, err := os.Open(src)
+	if err != nil {
+		return
+	}
+	defer func(in *os.File) {
+		_ = in.Close()
+	}(in)
+	out, err := os.Create(dst)
+	if err != nil {
+		return
+	}
+	defer func() {
+		cerr := out.Close()
+		if err == nil {
+			err = cerr
+		}
+	}()
+	if _, err = io.Copy(out, in); err != nil {
+		return
+	}
+	err = out.Sync()
+	return
 }

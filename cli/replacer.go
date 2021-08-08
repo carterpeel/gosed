@@ -1,13 +1,9 @@
-// Copyright GoSed (c) 2021, Carter Peel 
-// This code is licensed under MIT license (see LICENSE for details)
-
-package gosed
+package main
 
 import (
 	"bufio"
 	"bytes"
 	"fmt"
-	"github.com/carterpeel/go-corelib/ios"
 	"github.com/zenthangplus/goccm"
 	"io"
 	"os"
@@ -141,7 +137,7 @@ func (rp *Replacer) Replace() (int, error) {
 func DoSequentialReplace(rp *Replacer) (int, error) {
 	defer rp.Config.Semaphore.GCM.Done()
 	buf := bytes.NewBuffer(make([]byte, 8192))
-	replacer := ios.BytesReplacingReader{}
+	replacer := BytesReplacingReader{}
 	DoSingleReplace := func(old, new []byte) (int, error) {
 		tmpFile := fmt.Sprintf("tmp-gosed-%d", time.Now().UnixNano())
 		input, err := os.OpenFile(rp.Config.FilePath, os.O_RDWR, rp.Config.FilePerm)
@@ -225,13 +221,16 @@ func DoChainReplace(rp *Replacer) (int, error) {
 		_ = input.Close()
 		rp.Config.Semaphore.GCM.Done()
 	}(input, output)
-	var replacer = ios.NewBytesReplacingReader(bufio.NewReaderSize(input, 8192), rp.Config.Mappings.Keys[0], rp.Config.Mappings.Indices[0])
-	replacer.SetBufferSize(8192*4)
+	var replacer = NewBytesReplacingReader(bufio.NewReaderSize(input, 8192), rp.Config.Mappings.Keys[0], rp.Config.Mappings.Indices[0])
 	for index, key := range rp.Config.Mappings.Keys {
-		if index == 0 {
+	Switch:
+		switch index {
+		case 0:
 			continue
+		default:
+			break Switch
 		}
-		replacer = ios.NewBytesReplacingReader(replacer, key, rp.Config.Mappings.Indices[index])
+		replacer = NewBytesReplacingReader(replacer, key, rp.Config.Mappings.Indices[index])
 	}
 	wrote, err := io.CopyBuffer(output, replacer, make([]byte, 8192))
 	switch err {
@@ -257,4 +256,5 @@ func DoChainReplace(rp *Replacer) (int, error) {
 	rp.Config.Mappings.Keys = rp.Config.Mappings.Keys[:0]
 	return int(wrote), nil
 }
+
 
