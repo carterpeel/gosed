@@ -27,6 +27,12 @@ jobs:
     - name: Init go.mod
       run: go mod init gosed 
       
+    - name: Get latest revision of go-corelib
+      run: go get github.com/carterpeel/go-corelib@master
+      
+    - name: Get latest revision of go-corelib/ios
+      run: go github.com/carterpeel/go-corelib/ios@master
+      
     - name: Download Modules
       run: go mod tidy 
       
