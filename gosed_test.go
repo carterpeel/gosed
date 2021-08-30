@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -75,8 +76,14 @@ func TestSmall(t *testing.T) {
 		t.Fatal(err.Error())
 	}
 	fmt.Printf("[gosed] --> replaced %d bytes in %s\n", replaced, time.Since(start))
+	var sedPath string
+	if runtime.GOOS == "darwin" {
+		sedPath = "gsed"
+	} else {
+		sedPath = "sed"
+	}
 	start = time.Now()
-	out, err := exec.Command("sed", "-i", fmt.Sprintf("s/%s/REPLACED/g", wordlist[0]), "test-sed.txt").CombinedOutput()
+	out, err := exec.Command(sedPath, "-i", fmt.Sprintf("s/%s/REPLACED/g", wordlist[0]), "test-sed.txt").CombinedOutput()
 	if err != nil {
 		log.Printf("gnused output: %s\n", string(out))
 		t.Fatal(err.Error())
@@ -213,7 +220,13 @@ func TestFull(t *testing.T) {
 		t.Fatal(err.Error())
 	}
 	log.Printf("[gosed] --> replaced %d occurrences in %s\n", replaced, time.Since(start))
-	var args = fmt.Sprintf("#!/bin/bash\nsed -i '")
+	var sedPath string
+	if runtime.GOOS == "darwin" {
+		sedPath = "gsed"
+	} else {
+		sedPath = "sed"
+	}
+	var args = fmt.Sprintf("#!/bin/bash\n%s -i '", sedPath)
 	for i, v := range wordlist {
 		if i != len(wordlist)-1 {
 			args = fmt.Sprintf("%ss/%s/REPLACED-%d/g; ", args, v, i)
@@ -326,9 +339,15 @@ func TestFullSequential(t *testing.T) {
 		t.Fatal(err.Error())
 	}
 	log.Printf("[gosed] --> replaced %d occurrences in %s\n", replaced, time.Since(start))
+	var sedPath string
+	if runtime.GOOS == "darwin" {
+		sedPath = "gsed"
+	} else {
+		sedPath = "sed"
+	}
 	start = time.Now()
 	for i, v := range wordlist {
-		out, err := exec.Command("sed", "-i", fmt.Sprintf("s/%s/REPLACED-%d/g", v, i), "test-sed-seq.txt").CombinedOutput()
+		out, err := exec.Command(sedPath, "-i", fmt.Sprintf("s/%s/REPLACED-%d/g", v, i), "test-sed-seq.txt").CombinedOutput()
 		if err != nil {
 			log.Println(string(out))
 			t.Fatal(err.Error())
