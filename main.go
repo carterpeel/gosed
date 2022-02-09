@@ -226,7 +226,7 @@ func DoChainReplace(rp *Replacer) (int, error) {
 		rp.Config.Semaphore.GCM.Done()
 	}(input, output)
 	var replacer = ios.NewBytesReplacingReader(bufio.NewReaderSize(input, 8192), rp.Config.Mappings.Keys[0], rp.Config.Mappings.Indices[0])
-	replacer.SetBufferSize(8192*4)
+	//replacer.SetBufferSize(8192*4)
 	for index, key := range rp.Config.Mappings.Keys {
 		if index == 0 {
 			continue
